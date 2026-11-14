@@ -814,25 +814,94 @@ class FinetuningTrainer:
 
 class FinetuningAnalytics:
     """
-    This class has miscellaneous plots and prediction display.
+    This class has miscellaneous plots and prediction display:
+
+    1. Image Grid with predictions for random samples
+    2. Image Grid with wrong predictions for random samples
+    3. Loss-Accuracy plot for a given experiment
+    4. Accuracy comparison across experiments
     """
 
-    def __init__(self, experiments: dict[str, FinetuningTrainer]):
-        self.experiments = experiments
+    def __init__(self) -> None:
+        # Experiments are trainers and they add themselves to the following list
+        self.experiments: dict[str, FinetuningTrainer] = {}
 
-    def test_predictions(self, experiment: str):
+    # -----------
+    # Image Grids
+    # -----------
+
+    def test_predictions(self, experiment: str) -> None:
+        """
+        10 random samples are chosen from the test dataset of the experiment.
+        The results (label, image, prediction) are shown in an image grid.
+        """
         ds = self.experiments[experiment].test_dataloader.dataset
-        display(Markdown(f"*Predictions from **{experiment}**:*"))
+        display(Markdown(f"*Random Predictions from **{experiment}**:*"))
 
         max_idx = len(ds) - 1
         random.seed(42)
 
+        idxs = [random.randint(0, max_idx) for i in range(10)]
+        samples = [ds[idx] for idx in idxs]
+        imgs = [img for _, img in samples]
+        labels = [label for label, _ in samples]
+
+        sample_preds = []
+        preds = self.predict(experiment, imgs)
+        for label, img, pred in zip(labels, imgs, preds):
+            if label != pred:
+                sample_pred = {"label": label, "img": img, "pred": pred}
+                sample_preds.append(sample_pred)
+
+        self.show_img_grid(sample_preds=sample_preds)
+
+    def test_wrong_predictions(self, experiment: str):
+        """
+        Random samples are sent to prediction until 10 wrong predictions are
+        accumulated. These results (label, image, prediction) are shown in an
+        image grid.
+
+        This wrong prediction grid shows what kind of images that the model is
+        having trouble with.
+        """
+        ds = self.experiments[experiment].test_dataloader.dataset
+        display(Markdown(f"*Random Wrong Predictions from **{experiment}**:*"))
+
+        random.seed(42)
+
+        wrong_preds: list[dict[str, Any]] = []
+        while len(wrong_preds) < 10:
+            self.get_wrong_preds(ds, wrong_preds)
+
+        self.show_img_grid(wrong_preds)
+
+    # --------------------------
+    # Image Grid Support Methods
+    # --------------------------
+
+    def predict(self, experiment: str, imgs: Any):
+        """Predictions for given images."""
+        model = self.experiments[experiment].model
+        device = self.experiments[experiment].device
+
+        model = model.to(device)
+        model.eval()
+        with torch.no_grad():
+            imgs = imgs.to(device)
+            class_preds = model(imgs)
+            preds = class_preds.argmax()
+
+        return preds
+
+    def show_img_grid(self, sample_preds: list[dict[str, Any]]):
+        """Display image grid with label, img, prediction."""
         fig, axes = plt.subplots(nrows=2, ncols=5, figsize=(8, 4))
-        for ax in axes.flatten():
-            idx = random.randint(0, max_idx)
-            img, label = ds[idx]
-            img_t = img.unsqueeze(0)
-            pred = self.predict(experiment, img_t)
+        for idx, ax in enumerate(axes.flatten()):
+            label, img, pred = (
+                sample_preds[idx]["label"],
+                sample_preds[idx]["img"],
+                sample_preds[idx]["pred"],
+            )
 
             ax.axis("off")
             img = img.detach().cpu().permute(1, 2, 0).clamp(0, 1)
@@ -859,30 +928,49 @@ class FinetuningAnalytics:
 
         plt.show()
 
-    def predict(self, experiment: str, img: Any):
-        model = self.experiments[experiment].model
-        device = self.experiments[experiment].device
+    def get_wrong_preds(
+        self, ds: Dataset, wrong_preds: list[dict[str, Any]]
+    ) -> None:
+        """
+        Go through samples, until 10 wrong predictions are obtained.
+        """
+        max_idx = len(ds) - 1
 
-        model = model.to(device)
-        model.eval()
-        with torch.no_grad():
-            img = img.to(device)
-            preds = model(img)
-            pred = preds.argmax()
+        # Get 100 indices and make predictions at a time
+        idxs = [random.randint(0, max_idx) for i in range(100)]
+        samples = [ds[idx] for idx in idxs]
+        labels = [label for label, _ in samples]
+        imgs = [img for _, img in samples]
 
-        return pred
+        preds = self.predict(experiment, imgs)
+
+        for label, img, pred in zip(labels, imgs, preds):
+            if label != pred:
+                sample_pred = {"label": label, "img": img, "pred": pred}
+                wrong_preds.append(sample_pred)
+            if len(wrong_preds) == 10:
+                break
+
+    # -----
+    # Plots
+    # -----
 
     def loss_accuracy_plot(self, experiment: str) -> None:
-        metrics = self.experiments[experiment].metrics
+        """
+        Plot between training loss and validation accuracy for a given
+        experiment.
 
-        df = pd.DataFrame(metrics.items(), columns=["metric", "value"])
-        loss = df[df["metric"].str.contains("training loss")][
-            "value"
-        ].to_numpy()
-        accuracy = df[df["metric"].str.contains("validation accuracy")][
-            "value"
-        ].to_numpy()
-        epochs = np.arange(1, len(loss) + 1)
+        Args:
+            experiment: Name of the experiment, e.g. fine-tune classifier.
+        """
+        metrics = self.experiments[experiment].metrics
+        display(
+            Markdown(
+                f"*Training Loss and Validation Accuracy from **{experiment}**:*"
+            )
+        )
+
+        loss, accuracy, epochs = self.get_loss_accuracy(metrics)
 
         fig, ax = plt.subplots(figsize=(6, 4))
 
@@ -904,22 +992,8 @@ class FinetuningAnalytics:
         plt.tight_layout()
         plt.show()
 
-    def get_loss_accuracy(
-        self, metrics: dict[str, float]
-    ) -> tuple[np.ndarray, np.ndarray, int]:
-        df = pd.DataFrame(metrics.items(), columns=["metric", "value"])
-
-        loss = df[df["metric"].str.contains("training loss")][
-            "value"
-        ].to_numpy()
-        accuracy = df[df["metric"].str.contains("validation accuracy")][
-            "value"
-        ].to_numpy()
-        epochs = np.arange(1, len(loss) + 1)
-
-        return loss, accuracy, epochs
-
     def accuracy_compare_plot(self) -> None:
+        """Plot that compares the accuracies between experiments."""
         acc_list = []
         epoch_list = []
         labels = []
@@ -929,6 +1003,11 @@ class FinetuningAnalytics:
             epoch_list.append(epoch)
             labels.append(trainer.experiment)
 
+        display(
+            Markdown(
+                f"*Accuracy Comparison between experiments: **{list(self.experiments.keys())}**:*"
+            )
+        )
         fig, ax = plt.subplots(figsize=(6, 4))
         for i in range(len(labels)):
             ax.plot(
@@ -947,10 +1026,39 @@ class FinetuningAnalytics:
         plt.tight_layout()
         plt.show()
 
+    # ------------
+    # Plot Support
+    # ------------
+
+    def get_loss_accuracy(
+        self, metrics: dict[str, float]
+    ) -> tuple[np.ndarray, np.ndarray, int]:
+        """
+        Splits the metrics dictionary into training loss and validation accuracy.
+
+        Args:
+            metrics: dictionary from the training run.
+
+        Returns:
+            loss, accuracy, epochs: training loss, validation accuracy, and
+                the epochs list.
+        """
+        df = pd.DataFrame(metrics.items(), columns=["metric", "value"])
+
+        loss = df[df["metric"].str.contains("training loss")][
+            "value"
+        ].to_numpy()
+        accuracy = df[df["metric"].str.contains("validation accuracy")][
+            "value"
+        ].to_numpy()
+        epochs = np.arange(1, len(loss) + 1)
+
+        return loss, accuracy, epochs
+
 
 if __name__ == "__main__":
     experiment = "fine-tune classifier"
-    analytics = FinetuningAnalytics(experiments={})
+    analytics = FinetuningAnalytics()
 
     weights = FinetuningWeights()
     data = FinetuningDataModule(root="./data/finetune", weights=weights)
