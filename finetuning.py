@@ -741,6 +741,7 @@ class FinetuningTrainer:
             testing_correct_step = self.module.testing_step(
                 inputs=inputs, labels=labels
             )
+            testing_correct_step = testing_correct_step.item()
             testing_correct_total += testing_correct_step
             pbar_test.set_postfix(
                 {
@@ -843,15 +844,15 @@ class FinetuningAnalytics:
 
         idxs = [random.randint(0, max_idx) for i in range(10)]
         samples = [ds[idx] for idx in idxs]
-        imgs = [img for _, img in samples]
-        labels = [label for label, _ in samples]
+        imgs = [img for img, _ in samples]
+        labels = [label for _, label in samples]
 
+        preds_t = self.predict(experiment, imgs)
+        preds = preds_t.tolist()
         sample_preds = []
-        preds = self.predict(experiment, imgs)
         for label, img, pred in zip(labels, imgs, preds):
-            if label != pred:
-                sample_pred = {"label": label, "img": img, "pred": pred}
-                sample_preds.append(sample_pred)
+            sample_pred = {"label": label, "img": img, "pred": pred}
+            sample_preds.append(sample_pred)
 
         self.show_img_grid(sample_preds=sample_preds)
 
@@ -871,7 +872,7 @@ class FinetuningAnalytics:
 
         wrong_preds: list[dict[str, Any]] = []
         while len(wrong_preds) < 10:
-            self.get_wrong_preds(ds, wrong_preds)
+            self.get_wrong_preds(experiment, ds, wrong_preds)
 
         self.show_img_grid(wrong_preds)
 
@@ -883,13 +884,14 @@ class FinetuningAnalytics:
         """Predictions for given images."""
         model = self.experiments[experiment].model
         device = self.experiments[experiment].device
+        imgs_t = torch.stack(imgs, dim=0)
 
         model = model.to(device)
         model.eval()
         with torch.no_grad():
-            imgs = imgs.to(device)
-            class_preds = model(imgs)
-            preds = class_preds.argmax()
+            imgs_t = imgs_t.to(device)
+            class_preds = model(imgs_t)
+            preds = class_preds.argmax(dim=1)
 
         return preds
 
@@ -898,9 +900,9 @@ class FinetuningAnalytics:
         fig, axes = plt.subplots(nrows=2, ncols=5, figsize=(8, 4))
         for idx, ax in enumerate(axes.flatten()):
             label, img, pred = (
-                sample_preds[idx]["label"],
-                sample_preds[idx]["img"],
-                sample_preds[idx]["pred"],
+                sample_preds[idx - 1]["label"],
+                sample_preds[idx - 1]["img"],
+                sample_preds[idx - 1]["pred"],
             )
 
             ax.axis("off")
@@ -929,7 +931,7 @@ class FinetuningAnalytics:
         plt.show()
 
     def get_wrong_preds(
-        self, ds: Dataset, wrong_preds: list[dict[str, Any]]
+        self, experiment: str, ds: Dataset, wrong_preds: list[dict[str, Any]]
     ) -> None:
         """
         Go through samples, until 10 wrong predictions are obtained.
@@ -939,8 +941,8 @@ class FinetuningAnalytics:
         # Get 100 indices and make predictions at a time
         idxs = [random.randint(0, max_idx) for i in range(100)]
         samples = [ds[idx] for idx in idxs]
-        labels = [label for label, _ in samples]
-        imgs = [img for _, img in samples]
+        labels = [label for _, label in samples]
+        imgs = [img for img, _ in samples]
 
         preds = self.predict(experiment, imgs)
 
