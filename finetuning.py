@@ -871,10 +871,110 @@ class FinetuningAnalytics:
         random.seed(42)
 
         wrong_preds: list[dict[str, Any]] = []
-        while len(wrong_preds) < 10:
-            self.get_wrong_preds(experiment, ds, wrong_preds)
+        # while len(wrong_preds) < 10:
+        self.get_wrong_preds(experiment, ds, wrong_preds)
 
         self.show_img_grid(wrong_preds)
+
+    def test_wrong_predictions_across_experiments(self, idx_start: int = 1000):
+        """
+        Random samples are sent to prediction until 10 wrong predictions are
+        accumulated. These results (label, image, prediction) are shown in an
+        image grid.
+
+        This wrong prediction grid shows what kind of images that the model is
+        having trouble with.
+        """
+        # ds = self.experiments[experiment].test_dataloader.dataset
+        display(
+            Markdown(
+                f"*Random Wrong Predictions from **{list(self.experiments.keys())}**:*"
+            )
+        )
+
+        random.seed(42)
+
+        wrong_preds = self.get_wrong_preds_across_experiments(idx_start)
+        self.show_img_grid(wrong_preds)
+
+    def get_wrong_preds_from_idx(
+        self,
+        experiment: str,
+        ds: Dataset,
+        wrong_preds: list[dict[str, Any]],
+        idx_start: int,
+        batch_size: int = 256,
+    ) -> None:
+        """
+        Go through samples from the start index for a batch and provide details of
+        wrong predictions.
+        """
+        idxs = [i for i in range(idx_start, idx_start + batch_size)]
+        samples = [ds[idx] for idx in idxs]
+        labels = [label for _, label in samples]
+        imgs = [img for img, _ in samples]
+
+        preds = self.predict(experiment, imgs)
+
+        for label, img, pred, idx in zip(labels, imgs, preds, idxs):
+            if label != pred:
+                sample_pred = {
+                    "label": label,
+                    "img": img,
+                    "pred": pred,
+                    "idx": idx,
+                }
+                wrong_preds.append(sample_pred)
+
+    def get_wrong_preds_across_experiments(
+        self,
+        idx_start: int,
+    ) -> list[dict[str, Any]]:
+        first_exp = list(self.experiments.keys())[0]
+        ds = self.experiments[first_exp].test_dataloader.dataset
+        common_wrong_preds: list[dict[str, Any]] = []
+
+        while len(common_wrong_preds) < 10:
+            wrong_preds_list = []
+            for experiment in self.experiments.keys():
+                experiment_wrong_preds: list[dict[str, Any]] = []
+                self.get_wrong_preds_from_idx(
+                    experiment, ds, experiment_wrong_preds, idx_start
+                )
+                wrong_preds_list.append(experiment_wrong_preds)
+
+            wrong_idxs_list = []
+            for wrong_preds in wrong_preds_list:
+                wrong_idxs = [p["idx"] for p in wrong_preds]
+                wrong_idxs_list.append(wrong_idxs)
+
+            common_wrong_idxs_set = set(wrong_idxs_list[0])
+            for i in range(1, len(wrong_idxs_list)):
+                common_wrong_idxs_set = common_wrong_idxs_set & set(
+                    wrong_idxs_list[i]
+                )
+
+            common_wrong_idxs = sorted(common_wrong_idxs_set)
+            for idx in common_wrong_idxs:
+                samples = []
+                common_wrong_pred = {}
+                for wrong_preds in wrong_preds_list:
+                    sample = [s for s in wrong_preds if s.get("idx") == idx]
+                    samples.append(sample[0])
+
+                common_wrong_pred = {
+                    "label": samples[0]["label"],
+                    "img": samples[0]["img"],
+                    "pred": [p["pred"] for p in samples],
+                    #                "idx": idx,
+                }
+
+                if common_wrong_pred and len(common_wrong_preds) < 10:
+                    common_wrong_preds.append(common_wrong_pred)
+
+            idx_start += 256
+
+        return common_wrong_preds
 
     # --------------------------
     # Image Grid Support Methods
@@ -938,20 +1038,21 @@ class FinetuningAnalytics:
         """
         max_idx = len(ds) - 1
 
-        # Get 100 indices and make predictions at a time
-        idxs = [random.randint(0, max_idx) for i in range(100)]
-        samples = [ds[idx] for idx in idxs]
-        labels = [label for _, label in samples]
-        imgs = [img for img, _ in samples]
+        while len(wrong_preds) < 10:
+            # Get 100 indices and make predictions at a time
+            idxs = [random.randint(0, max_idx) for i in range(100)]
+            samples = [ds[idx] for idx in idxs]
+            labels = [label for _, label in samples]
+            imgs = [img for img, _ in samples]
 
-        preds = self.predict(experiment, imgs)
+            preds = self.predict(experiment, imgs)
 
-        for label, img, pred in zip(labels, imgs, preds):
-            if label != pred:
-                sample_pred = {"label": label, "img": img, "pred": pred}
-                wrong_preds.append(sample_pred)
-            if len(wrong_preds) == 10:
-                break
+            for label, img, pred in zip(labels, imgs, preds):
+                if label != pred:
+                    sample_pred = {"label": label, "img": img, "pred": pred}
+                    wrong_preds.append(sample_pred)
+                if len(wrong_preds) == 10:
+                    break
 
     # -----
     # Plots
@@ -1010,7 +1111,7 @@ class FinetuningAnalytics:
                 f"*Accuracy Comparison between experiments: **{list(self.experiments.keys())}**:*"
             )
         )
-        fig, ax = plt.subplots(figsize=(6, 4))
+        fig, ax = plt.subplots(figsize=(8, 6))
         for i in range(len(labels)):
             ax.plot(
                 epoch_list[i],
