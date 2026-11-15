@@ -1022,7 +1022,7 @@ class FinetuningAnalytics:
         ax.set_title("Accuracy Comparison across Experiments")
         ax.set_xlabel("Epoch")
         ax.set_ylabel("Accuracy")
-        ax.legend(loc="upper right")
+        ax.legend(loc="lower right")
         ax.grid(True, alpha=0.5)
 
         plt.tight_layout()
