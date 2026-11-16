@@ -14,7 +14,7 @@ import pandas as pd
 import numpy as np
 from PIL import Image
 
-from tqdm.notebook import tqdm
+from tqdm.auto import tqdm
 from IPython.display import display, Markdown
 
 import matplotlib.pyplot as plt
