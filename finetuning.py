@@ -14,7 +14,7 @@ import pandas as pd
 import numpy as np
 from PIL import Image
 
-from tqdm.auto import tqdm
+from tqdm.notebook import tqdm
 from IPython.display import display, Markdown
 
 import matplotlib.pyplot as plt
@@ -666,7 +666,7 @@ class FinetuningTrainer:
         loss_final = 0.0
         accuracy_final = 0.0
 
-        num_train_batches = self.num_batches(type="training")
+        # num_train_batches = self.num_batches(type="training")
         # num_val_batches = self.num_batches(type="validation")
         for epoch in range(self.epochs):
             # Training
@@ -678,17 +678,26 @@ class FinetuningTrainer:
                 unit="batches",
                 leave=False,
             )
-            for inputs, labels in pbar_train:
+            loss_epoch_avg = 0.0
+            for idx_train, (inputs, labels) in enumerate(pbar_train):
                 inputs, labels = inputs.to(self.device), labels.to(self.device)
                 loss_step = self.module.training_step(
                     inputs=inputs, labels=labels
                 )
                 batch_loss = loss_step.item()
                 loss_epoch += batch_loss
-                pbar_train.set_postfix({"loss": f"{batch_loss:.4f}"})
+                loss_epoch_avg = loss_epoch_avg / (idx_train + 1)
+                pbar_train.set_postfix(
+                    {
+                        "batch loss": f"{batch_loss:.4f}",
+                        "avg loss": f"{loss_epoch_avg:.4f}",
+                    }
+                )
 
-            loss_epoch = loss_epoch / num_train_batches
-            self.log(metric=f"epoch{epoch}: training loss", value=loss_epoch)
+            # loss_epoch = loss_epoch / (idx_train + 1)
+            self.log(
+                metric=f"epoch{epoch}: training loss", value=loss_epoch_avg
+            )
             loss_final += loss_epoch
 
             # Validation
@@ -725,6 +734,8 @@ class FinetuningTrainer:
                 f"Epoch {epoch}: loss = {loss_epoch:.4f}, accuracy = {accuracy_epoch * 100:.2f}%"
             )
 
+        print(f"\nTraining and Validation Complete for: {self.experiment}.\n")
+
         # Testing
         # num_test_batches = self.num_batches(type="testing")
         testing_correct_total = 0
@@ -757,7 +768,20 @@ class FinetuningTrainer:
         self.log(metric="Final: testing accuracy", value=accuracy_testing)
         print(f"Final: testing accuracy = {accuracy_testing * 100:.2f}%")
 
+        print(f"\nTesting Complete for: {self.experiment}.\n")
+
         self.print_metrics()
+
+        pbar_train.clear()
+        pbar_test.clear()
+        pbar_val.clear()
+        pbar_train.close()
+        pbar_test.close()
+        pbar_val.close()
+        pbar_train = None
+        pbar_test = None
+        pbar_val = None
+
         return self.model
 
     def choose_device(self, seed: int = 42) -> torch.device:
@@ -778,24 +802,24 @@ class FinetuningTrainer:
         self.log(metric="device", value=device)
         return device
 
-    def num_batches(self, type: str) -> int:
-        """Returns the number batches in each dataset based on batch_size."""
-        if type == "training":
-            return math.ceil(
-                len(self.train_dataloader.dataset)
-                / self.train_dataloader.batch_size
-            )
-        elif type == "validation":
-            return math.ceil(
-                len(self.val_dataloader.dataset)
-                / self.val_dataloader.batch_size
-            )
-        elif type == "testing":
-            return math.ceil(
-                len(self.test_dataloader.dataset)
-                / self.test_dataloader.batch_size
-            )
-        return 0
+    # def num_batches(self, type: str) -> int:
+    #     """Returns the number batches in each dataset based on batch_size."""
+    #     if type == "training":
+    #         return math.ceil(
+    #             len(self.train_dataloader.dataset)
+    #             / self.train_dataloader.batch_size
+    #         )
+    #     elif type == "validation":
+    #         return math.ceil(
+    #             len(self.val_dataloader.dataset)
+    #             / self.val_dataloader.batch_size
+    #         )
+    #     elif type == "testing":
+    #         return math.ceil(
+    #             len(self.test_dataloader.dataset)
+    #             / self.test_dataloader.batch_size
+    #         )
+    #     return 0
 
     # -------
     # Logging
@@ -885,7 +909,6 @@ class FinetuningAnalytics:
         This wrong prediction grid shows what kind of images that the model is
         having trouble with.
         """
-        # ds = self.experiments[experiment].test_dataloader.dataset
         display(
             Markdown(
                 f"*Random Wrong Predictions from **{list(self.experiments.keys())}**:*"
@@ -921,7 +944,7 @@ class FinetuningAnalytics:
                 sample_pred = {
                     "label": label,
                     "img": img,
-                    "pred": pred,
+                    "pred": pred.item(),
                     "idx": idx,
                 }
                 wrong_preds.append(sample_pred)
@@ -966,7 +989,6 @@ class FinetuningAnalytics:
                     "label": samples[0]["label"],
                     "img": samples[0]["img"],
                     "pred": [p["pred"] for p in samples],
-                    #                "idx": idx,
                 }
 
                 if common_wrong_pred and len(common_wrong_preds) < 10:
@@ -1102,7 +1124,7 @@ class FinetuningAnalytics:
         labels = []
         for trainer in self.experiments.values():
             _, accuracy, epoch = self.get_loss_accuracy(trainer.metrics)
-            acc_list.append(accuracy)
+            acc_list.append(accuracy * 100)
             epoch_list.append(epoch)
             labels.append(trainer.experiment)
 
