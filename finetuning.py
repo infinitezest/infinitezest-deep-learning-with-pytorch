@@ -191,13 +191,19 @@ class FinetuningDataModule:
         batch_size passed to the class is used.
         """
         self.train_dataloader = DataLoader(
-            dataset=self.train_dataset, batch_size=self.batch_size, shuffle=True
+            dataset=self.train_dataset,
+            batch_size=self.batch_size,
+            shuffle=True,
         )
         self.val_dataloader = DataLoader(
-            dataset=self.val_dataset, batch_size=self.batch_size, shuffle=False
+            dataset=self.val_dataset,
+            batch_size=self.batch_size,
+            shuffle=False,
         )
         self.test_dataloader = DataLoader(
-            dataset=self.test_dataset, batch_size=self.batch_size, shuffle=False
+            dataset=self.test_dataset,
+            batch_size=self.batch_size,
+            shuffle=False,
         )
 
     # ---------------
@@ -666,8 +672,6 @@ class FinetuningTrainer:
         loss_final = 0.0
         accuracy_final = 0.0
 
-        # num_train_batches = self.num_batches(type="training")
-        # num_val_batches = self.num_batches(type="validation")
         for epoch in range(self.epochs):
             # Training
             loss_epoch = 0.0
@@ -686,7 +690,7 @@ class FinetuningTrainer:
                 )
                 batch_loss = loss_step.item()
                 loss_epoch += batch_loss
-                loss_epoch_avg = loss_epoch_avg / (idx_train + 1)
+                loss_epoch_avg = loss_epoch / (idx_train + 1)
                 pbar_train.set_postfix(
                     {
                         "batch loss": f"{batch_loss:.4f}",
@@ -694,7 +698,6 @@ class FinetuningTrainer:
                     }
                 )
 
-            # loss_epoch = loss_epoch / (idx_train + 1)
             self.log(
                 metric=f"epoch{epoch}: training loss", value=loss_epoch_avg
             )
@@ -731,13 +734,12 @@ class FinetuningTrainer:
             )
 
             print(
-                f"Epoch {epoch}: loss = {loss_epoch:.4f}, accuracy = {accuracy_epoch * 100:.2f}%"
+                f"Epoch {epoch}: loss = {loss_epoch_avg:.4f}, accuracy = {accuracy_epoch * 100:.2f}%"
             )
 
         print(f"\nTraining and Validation Complete for: {self.experiment}.\n")
 
         # Testing
-        # num_test_batches = self.num_batches(type="testing")
         testing_correct_total = 0
 
         pbar_test = tqdm(
@@ -801,25 +803,6 @@ class FinetuningTrainer:
 
         self.log(metric="device", value=device)
         return device
-
-    # def num_batches(self, type: str) -> int:
-    #     """Returns the number batches in each dataset based on batch_size."""
-    #     if type == "training":
-    #         return math.ceil(
-    #             len(self.train_dataloader.dataset)
-    #             / self.train_dataloader.batch_size
-    #         )
-    #     elif type == "validation":
-    #         return math.ceil(
-    #             len(self.val_dataloader.dataset)
-    #             / self.val_dataloader.batch_size
-    #         )
-    #     elif type == "testing":
-    #         return math.ceil(
-    #             len(self.test_dataloader.dataset)
-    #             / self.test_dataloader.batch_size
-    #         )
-    #     return 0
 
     # -------
     # Logging
@@ -895,7 +878,6 @@ class FinetuningAnalytics:
         random.seed(42)
 
         wrong_preds: list[dict[str, Any]] = []
-        # while len(wrong_preds) < 10:
         self.get_wrong_preds(experiment, ds, wrong_preds)
 
         self.show_img_grid(wrong_preds)
@@ -953,6 +935,16 @@ class FinetuningAnalytics:
         self,
         idx_start: int,
     ) -> list[dict[str, Any]]:
+        """
+        Gives a list of 10 wrong predictions by all the models in the experiment;
+        and this search for wrong predictions start at the index specified.
+
+        Args:
+            idx_start: The start index in test dataset to search for wrong preds
+
+        Returns:
+            List of wrong predictions
+        """
         first_exp = list(self.experiments.keys())[0]
         ds = self.experiments[first_exp].test_dataloader.dataset
         common_wrong_preds: list[dict[str, Any]] = []
