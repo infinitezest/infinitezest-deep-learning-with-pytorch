@@ -22,6 +22,7 @@ import matplotlib.pyplot as plt
 import math
 import random
 from pathlib import Path
+from pathvalidate import sanitize_filename
 from typing import Any, Sequence
 
 
@@ -642,6 +643,8 @@ class FinetuningTrainer:
         self.epochs = epochs
         self.module = module
         self.model = module.model
+        self.model_file = f"{sanitize_filename(experiment)}.pth"
+        self.model_dir = "./models"
 
         self.data = data
         self.train_dataloader = self.data.train_dataloader
@@ -670,7 +673,11 @@ class FinetuningTrainer:
 
         # Epochs
         loss_final = 0.0
-        accuracy_final = 0.0
+        # accuracy_final = 0.0
+
+        # Best model
+        highest_accuracy = 0.0
+        highest_accuracy_epoch = 0
 
         for epoch in range(self.epochs):
             # Training
@@ -726,8 +733,9 @@ class FinetuningTrainer:
                     }
                 )
 
+            # Log and print the validation accuracy for the epoch
             accuracy_epoch = correct_epoch / len(self.val_dataloader.dataset)
-            accuracy_final += accuracy_epoch
+            # accuracy_final += accuracy_epoch
             self.log(
                 metric=f"epoch {epoch}: validation accuracy",
                 value=accuracy_epoch,
@@ -737,7 +745,32 @@ class FinetuningTrainer:
                 f"Epoch {epoch}: loss = {loss_epoch_avg:.4f}, accuracy = {accuracy_epoch * 100:.2f}%"
             )
 
-        print(f"\nTraining and Validation Complete for: {self.experiment}.\n")
+            # If this epoch achieved the highest accuracy so far, save the model
+            if accuracy_epoch >= highest_accuracy:
+                highest_accuracy = accuracy_epoch
+                highest_accuracy_epoch = epoch
+
+                torch.save(
+                    self.model.state_dict(),
+                    f"{self.model_dir}/{self.model_file}",
+                )
+                print(
+                    f"Best model from epoch {epoch} saved to: {self.model_dir}/{self.model_file}."
+                )
+
+        # Final training message
+        print(f"\nTraining and Validation Complete for: {self.experiment}.")
+        print(
+            f"Best model from epoch {highest_accuracy_epoch} with {highest_accuracy * 100:.2f} is saved to {self.model_dir}/{self.model_file}.\n"
+        )
+
+        # Reload the best model
+        # This will be used for testing below, and prediction image grids,
+        # analytics, etc.
+        if highest_accuracy_epoch != (self.epochs - 1):
+            self.model.load_state_dict(
+                torch.load(f"{self.model_dir}/{self.model_file}")
+            )
 
         # Testing
         testing_correct_total = 0
