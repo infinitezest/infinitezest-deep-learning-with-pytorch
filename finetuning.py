@@ -821,7 +821,7 @@ class FinetuningTrainer:
 
     def choose_device(self, seed: int = 42) -> torch.device:
         """Returns the best device available."""
-        torch.manual_seed = seed
+        torch.manual_seed(seed)
         device = torch.device("cpu")
 
         if torch.cuda.is_available():
@@ -832,7 +832,7 @@ class FinetuningTrainer:
 
         elif torch.backends.mps.is_available():
             device = torch.device("mps")
-            torch.mps.manual_seed = seed
+            torch.mps.manual_seed(seed)
 
         self.log(metric="device", value=device)
         return device
