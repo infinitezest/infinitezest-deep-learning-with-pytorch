@@ -639,12 +639,13 @@ class FinetuningTrainer:
         module: FinetuningModule,
         data: FinetuningDataModule,
         epochs: int = 1,
+        model_dir: str = "./models",
     ) -> None:
         self.epochs = epochs
         self.module = module
         self.model = module.model
-        self.model_file = f"{sanitize_filename(experiment)}.pth"
-        self.model_dir = "./models"
+        self.model_file = f"{sanitize_filename(experiment)}.pt"
+        self.model_dir = model_dir
 
         self.data = data
         self.train_dataloader = self.data.train_dataloader
@@ -658,7 +659,7 @@ class FinetuningTrainer:
         self.analytics = analytics
         self.analytics.experiments[experiment] = self
 
-    def fit(self) -> nn.Module:
+    def fit(self, show_progress: bool = False) -> nn.Module:
         """
         Actual training/fine-tuning loop. Training and validation are performed
         for the given number of epochs. Loss and accuracy are calculated during
@@ -669,6 +670,10 @@ class FinetuningTrainer:
             fine-tuned model. This is also available via the instance of this
                 class.
         """
+        display(Markdown("*`FinetuningTrainier` fit():*"))
+        print(f"Training and Validation Started for: '{self.experiment}'.")
+        print(f"On Device: {self.device}\n")
+
         self.model.to(self.device)
 
         # Epochs
@@ -683,14 +688,18 @@ class FinetuningTrainer:
             # Training
             loss_epoch = 0.0
 
-            pbar_train = tqdm(
-                iterable=self.train_dataloader,
-                desc="training",
-                unit="batches",
-                leave=False,
-            )
+            iter_train = self.train_dataloader
+            if show_progress:
+                pbar_train = tqdm(
+                    iterable=self.train_dataloader,
+                    desc="training",
+                    unit="batches",
+                    leave=False,
+                )
+                iter_train = pbar_train
+
             loss_epoch_avg = 0.0
-            for idx_train, (inputs, labels) in enumerate(pbar_train):
+            for idx_train, (inputs, labels) in enumerate(iter_train):
                 inputs, labels = inputs.to(self.device), labels.to(self.device)
                 loss_step = self.module.training_step(
                     inputs=inputs, labels=labels
@@ -698,12 +707,14 @@ class FinetuningTrainer:
                 batch_loss = loss_step.item()
                 loss_epoch += batch_loss
                 loss_epoch_avg = loss_epoch / (idx_train + 1)
-                pbar_train.set_postfix(
-                    {
-                        "batch loss": f"{batch_loss:.4f}",
-                        "avg loss": f"{loss_epoch_avg:.4f}",
-                    }
-                )
+
+                if show_progress:
+                    pbar_train.set_postfix(
+                        {
+                            "batch loss": f"{batch_loss:.4f}",
+                            "avg loss": f"{loss_epoch_avg:.4f}",
+                        }
+                    )
 
             self.log(
                 metric=f"epoch{epoch}: training loss", value=loss_epoch_avg
@@ -713,25 +724,30 @@ class FinetuningTrainer:
             # Validation
             correct_epoch = 0
 
-            pbar_val = tqdm(
-                iterable=self.val_dataloader,
-                desc="validation",
-                unit="batches",
-                leave=False,
-            )
-            for idx_val, (inputs, labels) in enumerate(pbar_val):
+            iter_val = self.val_dataloader
+            if show_progress:
+                pbar_val = tqdm(
+                    iterable=self.val_dataloader,
+                    desc="validation",
+                    unit="batches",
+                    leave=False,
+                )
+                iter_val = pbar_val
+
+            for idx_val, (inputs, labels) in enumerate(iter_val):
                 inputs, labels = inputs.to(self.device), labels.to(self.device)
                 correct_step = self.module.validation_step(
                     inputs=inputs, labels=labels
                 )
                 correct_epoch += correct_step.item()
                 out_of = (idx_val + 1) * self.val_dataloader.batch_size
-                pbar_val.set_postfix(
-                    {
-                        "correct": correct_epoch,
-                        "out of": out_of,
-                    }
-                )
+                if show_progress:
+                    pbar_val.set_postfix(
+                        {
+                            "correct": correct_epoch,
+                            "out of": out_of,
+                        }
+                    )
 
             # Log and print the validation accuracy for the epoch
             accuracy_epoch = correct_epoch / len(self.val_dataloader.dataset)
@@ -754,14 +770,11 @@ class FinetuningTrainer:
                     self.model.state_dict(),
                     f"{self.model_dir}/{self.model_file}",
                 )
-                print(
-                    f"Best model from epoch {epoch} saved to: {self.model_dir}/{self.model_file}."
-                )
 
         # Final training message
-        print(f"\nTraining and Validation Complete for: {self.experiment}.")
+        print(f"\nTraining and Validation Complete for: '{self.experiment}'.")
         print(
-            f"Best model from epoch {highest_accuracy_epoch} with {highest_accuracy * 100:.2f} is saved to {self.model_dir}/{self.model_file}.\n"
+            f"Best model from epoch {highest_accuracy_epoch} with {highest_accuracy * 100:.2f} is saved to '{self.model_dir}/{self.model_file}'.\n"
         )
 
         # Reload the best model
@@ -773,50 +786,47 @@ class FinetuningTrainer:
             )
 
         # Testing
+        print(f"Testing Started for: '{self.experiment}'.")
         testing_correct_total = 0
 
-        pbar_test = tqdm(
-            iterable=self.test_dataloader,
-            desc="testing",
-            unit="batches",
-            leave=False,
-        )
+        iter_test = self.test_dataloader
+        if show_progress:
+            pbar_test = tqdm(
+                iterable=self.test_dataloader,
+                desc="testing",
+                unit="batches",
+                leave=False,
+            )
+            iter_test = pbar_test
+
         # total=num_test_batches
-        for inputs, labels in pbar_test:
+        for inputs, labels in iter_test:
             inputs, labels = inputs.to(self.device), labels.to(self.device)
             testing_correct_step = self.module.testing_step(
                 inputs=inputs, labels=labels
             )
             testing_correct_step = testing_correct_step.item()
             testing_correct_total += testing_correct_step
-            pbar_test.set_postfix(
-                {
-                    "correct": testing_correct_step,
-                    "batch size": self.test_dataloader.batch_size,
-                }
-            )
+            if show_progress:
+                pbar_test.set_postfix(
+                    {
+                        "correct": testing_correct_step,
+                        "batch size": self.test_dataloader.batch_size,
+                    }
+                )
 
         # Metrics at the end of testing
         accuracy_testing = testing_correct_total / len(
             self.test_dataloader.dataset
         )
         self.log(metric="Final: testing accuracy", value=accuracy_testing)
-        print(f"Final: testing accuracy = {accuracy_testing * 100:.2f}%")
+        print(
+            f"{testing_correct_total:,} samples identified correctly out of {len(self.test_dataloader.dataset):,} in test dataset."
+        )
+        print(f"Final Testing Accuracy = {accuracy_testing * 100:.2f}%")
+        print(f"Testing Complete for: '{self.experiment}'.\n")
 
-        print(f"\nTesting Complete for: {self.experiment}.\n")
-
-        self.print_metrics()
-
-        pbar_train.clear()
-        pbar_test.clear()
-        pbar_val.clear()
-        pbar_train.close()
-        pbar_test.close()
-        pbar_val.close()
-        pbar_train = None
-        pbar_test = None
-        pbar_val = None
-
+        # self.print_metrics()
         return self.model
 
     def choose_device(self, seed: int = 42) -> torch.device:
@@ -846,11 +856,11 @@ class FinetuningTrainer:
         self.metrics[metric] = value
         # print(f"{metric} = {value}")
 
-    def print_metrics(self) -> None:
-        """Prints metrics."""
-        display(Markdown("*`FinetuningTrainier` fit() is completed. Metrics:*"))
-        df = pd.DataFrame(self.metrics.items(), columns=["metric", "value"])
-        display(df.style.hide(axis="index"))
+    # def print_metrics(self) -> None:
+    #     """Prints metrics."""
+    #     display(Markdown("*`FinetuningTrainier` fit() is completed. Metrics:*"))
+    #     df = pd.DataFrame(self.metrics.items(), columns=["metric", "value"])
+    #     display(df.style.hide(axis="index"))
 
 
 class FinetuningAnalytics:
