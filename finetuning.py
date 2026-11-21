@@ -96,7 +96,7 @@ class FinetuningWeights:
     def print_metrics(self) -> None:
         display(Markdown("*`FinetuningWeights` is initialized. Metrics:*"))
         df = pd.DataFrame(self.metrics.items(), columns=["metric", "value"])
-        display(df.style.hide(axis="index"))
+        display(df)
 
 
 class FinetuningDataModule:
@@ -303,7 +303,7 @@ class FinetuningDataModule:
         """Prints metrics."""
         display(Markdown("*`FinetuningDataModule` is initialized. Metrics:*"))
         df = pd.DataFrame(self.metrics.items(), columns=["metric", "value"])
-        display(df.style.hide(axis="index"))
+        display(df)
 
 
 class TransformedDataset(Dataset):
@@ -556,7 +556,7 @@ class FinetuningModule:
         """Prints metrics."""
         display(Markdown("*`FinetuningModule` is initialized. Metrics:*"))
         df = pd.DataFrame(self.metrics.items(), columns=["metric", "value"])
-        display(df.style.hide(axis="index"))
+        display(df)
 
     # -----------------------------
     # Training, Validation, Testing
