@@ -96,7 +96,7 @@ class FinetuningWeights:
     def print_metrics(self) -> None:
         display(Markdown("*`FinetuningWeights` is initialized. Metrics:*"))
         df = pd.DataFrame(self.metrics.items(), columns=["metric", "value"])
-        display(df)
+        display(Markdown(df.to_markdown(index=False)))
 
 
 class FinetuningDataModule:
@@ -303,7 +303,7 @@ class FinetuningDataModule:
         """Prints metrics."""
         display(Markdown("*`FinetuningDataModule` is initialized. Metrics:*"))
         df = pd.DataFrame(self.metrics.items(), columns=["metric", "value"])
-        display(df)
+        display(Markdown(df.to_markdown(index=False)))
 
 
 class TransformedDataset(Dataset):
@@ -556,7 +556,7 @@ class FinetuningModule:
         """Prints metrics."""
         display(Markdown("*`FinetuningModule` is initialized. Metrics:*"))
         df = pd.DataFrame(self.metrics.items(), columns=["metric", "value"])
-        display(df)
+        display(Markdown(df.to_markdown(index=False)))
 
     # -----------------------------
     # Training, Validation, Testing
@@ -854,13 +854,6 @@ class FinetuningTrainer:
     def log(self, metric: str, value: Any) -> None:
         """Logs and prints the metrics as training/validation/testing occurs."""
         self.metrics[metric] = value
-        # print(f"{metric} = {value}")
-
-    # def print_metrics(self) -> None:
-    #     """Prints metrics."""
-    #     display(Markdown("*`FinetuningTrainier` fit() is completed. Metrics:*"))
-    #     df = pd.DataFrame(self.metrics.items(), columns=["metric", "value"])
-    #     display(df.style.hide(axis="index"))
 
 
 class FinetuningAnalytics:
