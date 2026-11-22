@@ -251,13 +251,12 @@ class FinetuningDataModule:
         Just listed here for completeness.
         """
         return [
-            T.RandomRotation(degrees=5),
-            T.RandomAdjustSharpness(sharpness_factor=1.5, p=0.3),
-            T.ColorJitter(brightness=0.1, contrast=0.1),
-            T.RandomVerticalFlip(p=0.5),
-            T.RandomAffine(
-                degrees=5, translate=(0.05, 0.05), scale=(0.95, 1.05)
-            ),
+            # T.RandomRotation(degrees=5),
+            # T.RandomAdjustSharpness(sharpness_factor=1.5, p=0.3),
+            # T.ColorJitter(brightness=0.1, contrast=0.1),
+            # T.RandomVerticalFlip(p=0.5),
+            T.RandomAffine(degrees=0, shear=10, translate=(0.1, 0.1)),
+            T.RandomPerspective(distortion_scale=0.1, p=0.5),
         ]
 
     def train_transforms(self) -> T.Compose:
@@ -270,7 +269,9 @@ class FinetuningDataModule:
         However, in case of MNIST dataset, no augmentations are used.
         (explanation provided elsewhere)
         """
-        return T.Compose(self.basic_transforms_list())
+        return T.Compose(
+            self.augmentation_transforms_list() + self.basic_transforms_list()
+        )
 
     def eval_transforms(self) -> T.Compose:
         """
@@ -510,16 +511,11 @@ class FinetuningModule:
             f"{sum(p.numel() for p in self.model.classifier.parameters()):,}"
         )
 
-        num_parameters_to_tune = f"{
-            sum(
-                p.numel() for p in self.model.parameters() if p.requires_grad
-            ):,}"
+        num_parameters_to_tune = (
+            f"{sum(p.numel() for p in self.model.parameters() if p.requires_grad):,}"
+        )
         num_parameters_unchanged = f"{
-            sum(
-                p.numel()
-                for p in self.model.parameters()
-                if not p.requires_grad
-            ):,}"
+            sum(p.numel() for p in self.model.parameters() if not p.requires_grad):,}"
 
         self.metrics["model name"] = self.model_name
         self.metrics["num feature extractor blocks"] = len(self.model.features)
@@ -701,9 +697,7 @@ class FinetuningTrainer:
             loss_epoch_avg = 0.0
             for idx_train, (inputs, labels) in enumerate(iter_train):
                 inputs, labels = inputs.to(self.device), labels.to(self.device)
-                loss_step = self.module.training_step(
-                    inputs=inputs, labels=labels
-                )
+                loss_step = self.module.training_step(inputs=inputs, labels=labels)
                 batch_loss = loss_step.item()
                 loss_epoch += batch_loss
                 loss_epoch_avg = loss_epoch / (idx_train + 1)
@@ -716,9 +710,7 @@ class FinetuningTrainer:
                         }
                     )
 
-            self.log(
-                metric=f"epoch{epoch}: training loss", value=loss_epoch_avg
-            )
+            self.log(metric=f"epoch{epoch}: training loss", value=loss_epoch_avg)
             loss_final += loss_epoch
 
             # Validation
@@ -736,9 +728,7 @@ class FinetuningTrainer:
 
             for idx_val, (inputs, labels) in enumerate(iter_val):
                 inputs, labels = inputs.to(self.device), labels.to(self.device)
-                correct_step = self.module.validation_step(
-                    inputs=inputs, labels=labels
-                )
+                correct_step = self.module.validation_step(inputs=inputs, labels=labels)
                 correct_epoch += correct_step.item()
                 out_of = (idx_val + 1) * self.val_dataloader.batch_size
                 if show_progress:
@@ -816,9 +806,7 @@ class FinetuningTrainer:
                 )
 
         # Metrics at the end of testing
-        accuracy_testing = testing_correct_total / len(
-            self.test_dataloader.dataset
-        )
+        accuracy_testing = testing_correct_total / len(self.test_dataloader.dataset)
         self.log(metric="Final: testing accuracy", value=accuracy_testing)
         print(
             f"{testing_correct_total:,} samples identified correctly out of {len(self.test_dataloader.dataset):,} in test dataset."
@@ -1001,9 +989,7 @@ class FinetuningAnalytics:
 
             common_wrong_idxs_set = set(wrong_idxs_list[0])
             for i in range(1, len(wrong_idxs_list)):
-                common_wrong_idxs_set = common_wrong_idxs_set & set(
-                    wrong_idxs_list[i]
-                )
+                common_wrong_idxs_set = common_wrong_idxs_set & set(wrong_idxs_list[i])
 
             common_wrong_idxs = sorted(common_wrong_idxs_set)
             for idx in common_wrong_idxs:
@@ -1118,9 +1104,7 @@ class FinetuningAnalytics:
         """
         metrics = self.experiments[experiment].metrics
         display(
-            Markdown(
-                f"*Training Loss and Validation Accuracy from **{experiment}**:*"
-            )
+            Markdown(f"*Training Loss and Validation Accuracy from **{experiment}**:*")
         )
 
         loss, accuracy, epochs = self.get_loss_accuracy(metrics)
@@ -1198,9 +1182,7 @@ class FinetuningAnalytics:
         """
         df = pd.DataFrame(metrics.items(), columns=["metric", "value"])
 
-        loss = df[df["metric"].str.contains("training loss")][
-            "value"
-        ].to_numpy()
+        loss = df[df["metric"].str.contains("training loss")]["value"].to_numpy()
         accuracy = df[df["metric"].str.contains("validation accuracy")][
             "value"
         ].to_numpy()
