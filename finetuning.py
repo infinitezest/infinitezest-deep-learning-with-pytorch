@@ -748,8 +748,10 @@ class FinetuningTrainer:
             )
 
             print(
-                f"Epoch {epoch}: loss = {loss_epoch_avg:.4f}, accuracy = {accuracy_epoch * 100:.2f}%"
+                f"Epoch {epoch + 1} | loss = {loss_epoch_avg:.4f} | accuracy = {accuracy_epoch * 100:.2f}%"
             )
+            if epoch + 1 % 10 == 0:
+                print("\n")
 
             # If this epoch achieved the highest accuracy so far, save the model
             if accuracy_epoch >= highest_accuracy:
@@ -764,7 +766,7 @@ class FinetuningTrainer:
         # Final training message
         print(f"\nTraining and Validation Complete for: '{self.experiment}'.")
         print(
-            f"Best model from epoch {highest_accuracy_epoch} with {highest_accuracy * 100:.2f} is saved to '{self.model_dir}/{self.model_file}'.\n"
+            f"Best model from epoch {highest_accuracy_epoch + 1} with {highest_accuracy * 100:.2f}% is saved to '{self.model_dir}/{self.model_file}'.\n"
         )
 
         # Reload the best model
