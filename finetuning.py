@@ -18,6 +18,8 @@ from tqdm.auto import tqdm
 from IPython.display import display, Markdown
 
 import matplotlib.pyplot as plt
+from sklearn.metrics import confusion_matrix
+import seaborn as sns
 
 import math
 import random
@@ -613,7 +615,7 @@ class FinetuningModule:
             _, pred_labels = preds.max(1)
             correct = (pred_labels == labels).sum()
 
-        return correct
+        return correct, pred_labels
 
 
 class FinetuningTrainer:
@@ -728,7 +730,9 @@ class FinetuningTrainer:
 
             for idx_val, (inputs, labels) in enumerate(iter_val):
                 inputs, labels = inputs.to(self.device), labels.to(self.device)
-                correct_step = self.module.validation_step(inputs=inputs, labels=labels)
+                correct_step, _ = self.module.validation_step(
+                    inputs=inputs, labels=labels
+                )
                 correct_epoch += correct_step.item()
                 out_of = (idx_val + 1) * self.val_dataloader.batch_size
                 if show_progress:
@@ -780,6 +784,8 @@ class FinetuningTrainer:
         # Testing
         print(f"Testing Started for: '{self.experiment}'.")
         testing_correct_total = 0
+        testing_pred_labels = np.array([])
+        testing_correct_labels = np.array([])
 
         iter_test = self.test_dataloader
         if show_progress:
@@ -794,11 +800,21 @@ class FinetuningTrainer:
         # total=num_test_batches
         for inputs, labels in iter_test:
             inputs, labels = inputs.to(self.device), labels.to(self.device)
-            testing_correct_step = self.module.testing_step(
+            testing_correct_step, testing_labels_step = self.module.testing_step(
                 inputs=inputs, labels=labels
             )
             testing_correct_step = testing_correct_step.item()
             testing_correct_total += testing_correct_step
+
+            # Save the predictions and labels
+            # These are used for creating confusion matrix
+            testing_pred_labels = np.append(
+                testing_pred_labels, testing_labels_step.detach().cpu().numpy()
+            )
+            testing_correct_labels = np.append(
+                testing_correct_labels, labels.detach().cpu().numpy()
+            )
+
             if show_progress:
                 pbar_test.set_postfix(
                     {
@@ -810,6 +826,10 @@ class FinetuningTrainer:
         # Metrics at the end of testing
         accuracy_testing = testing_correct_total / len(self.test_dataloader.dataset)
         self.log(metric="Final: testing accuracy", value=accuracy_testing)
+
+        self.log(metric="testing prediction labels", value=testing_pred_labels)
+        self.log(metric="testing correct labels", value=testing_correct_labels)
+
         print(
             f"{testing_correct_total:,} samples identified correctly out of {len(self.test_dataloader.dataset):,} in test dataset."
         )
@@ -1128,6 +1148,37 @@ class FinetuningAnalytics:
         ax.legend(loc="upper right")
         ax.grid(True, alpha=0.5)
 
+        plt.tight_layout()
+        plt.show()
+
+    def confusion_matrix_plot(self, experiment: str) -> None:
+        """
+        Shows the Confusion Matrix fro the given experiment.
+
+        Args:
+            experiment: Name of the experiment, e.g. fine-tune classifier
+        """
+        metrics = self.experiments[experiment].metrics
+        display(Markdown(f"*Confusion Matrix for **{experiment}**:*"))
+
+        y_true = metrics["testing correct labels"]
+        y_pred = metrics["testing prediction labels"]
+        class_names = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]
+
+        cm = confusion_matrix(y_true, y_pred)
+
+        plt.figure(figsize=(8, 6))
+        sns.heatmap(
+            cm,
+            annot=True,
+            fmt="d",
+            cmap="Blues",
+            xticklabels=class_names,
+            yticklabels=class_names,
+        )
+        plt.xlabel("Predicted")
+        plt.ylabel("True")
+        plt.title(f"Confusion Matrx for {experiment}")
         plt.tight_layout()
         plt.show()
 
