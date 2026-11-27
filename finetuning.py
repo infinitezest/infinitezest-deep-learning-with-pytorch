@@ -1159,7 +1159,6 @@ class FinetuningAnalytics:
             experiment: Name of the experiment, e.g. fine-tune classifier
         """
         metrics = self.experiments[experiment].metrics
-        display(Markdown(f"*Confusion Matrix for **{experiment}**:*"))
 
         y_true = metrics["testing correct labels"]
         y_pred = metrics["testing prediction labels"]
@@ -1167,20 +1166,51 @@ class FinetuningAnalytics:
 
         cm = confusion_matrix(y_true, y_pred)
 
-        plt.figure(figsize=(8, 6))
-        sns.heatmap(
-            cm,
-            annot=True,
-            fmt="d",
-            cmap="Blues",
-            xticklabels=class_names,
-            yticklabels=class_names,
+        # Calculate the digit-wise percentages of correct predition
+        display(Markdown(f"*% correct prediction for **{experiment}**:*"))
+        total = cm.sum(1)
+        correct = cm.diagonal()
+        percentages = np.round((correct / total) * 100, decimals=1)
+        df = pd.DataFrame(
+            data=percentages,
+            columns=["Correct %"],
         )
-        plt.xlabel("Predicted")
-        plt.ylabel("True")
-        plt.title(f"Confusion Matrx for {experiment}")
-        plt.tight_layout()
-        plt.show()
+        display(Markdown(df.to_markdown(index=True)))
+
+        # Heat map for the confusion matrix
+        def show_plot(
+            title: str = f"Confusion Matrix for {experiment}",
+            diag_mask: Any = None,
+            cmap: str = "Blues",
+        ):
+            plt.figure(figsize=(8, 6))
+            sns.heatmap(
+                cm,
+                mask=diag_mask,
+                annot=True,
+                fmt="d",
+                cmap=cmap,
+                xticklabels=class_names,
+                yticklabels=class_names,
+            )
+            plt.xlabel("Predicted")
+            plt.ylabel("True")
+            plt.title(title)
+            plt.tight_layout()
+            plt.show()
+
+        # First plot - entire confusion matrix
+        display(Markdown(f"*Confusion Matrix for **{experiment}**:*"))
+        show_plot()
+
+        # Second plot - just the misclassification
+        display(Markdown(f"*Misclassification Heatmap for **{experiment}**:*"))
+        diag_mask = np.eye(cm.shape[0], dtype=bool)
+        show_plot(
+            title=f"Misclassification Heatmap for {experiment}",
+            diag_mask=diag_mask,
+            cmap="Reds",
+        )
 
     def accuracy_compare_plot(self) -> None:
         """Plot that compares the accuracies between experiments."""
